@@ -1,0 +1,26 @@
+import java.io.File;
+
+# This helper loads operator-local configuration without versioning secrets.
+# It tries common paths so it works when loaded directly from modules or via another module.
+sub load_local_config {
+    local('@paths $path $resolved_path $file');
+
+    @paths = @(
+        "config/local.cna",
+        "../config/local.cna",
+        "../../config/local.cna",
+        "../../../config/local.cna",
+        "../../../../config/local.cna"
+    );
+
+    foreach $path (@paths) {
+        $resolved_path = script_resource($path);
+        $file = [new File: $resolved_path];
+        if ([$file exists]) {
+            include($resolved_path);
+            return 1;
+        }
+    }
+
+    return 0;
+}

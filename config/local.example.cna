@@ -1,0 +1,11 @@
+# Copy this file to config/local.cna and update local values.
+# config/local.cna is intentionally ignored by git.
+
+global('$url_base $username $password $token_duration_ms');
+
+################### Cobalt Strike REST API ###################
+
+$url_base = "https://<APISERVER>:50443";
+$username = "";
+$password = "";
+$token_duration_ms = 86400000;
