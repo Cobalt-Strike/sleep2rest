@@ -1,0 +1,165 @@
+# Cobalt Strike REST API Library.
+# Provides authenticated helpers for the Cobalt Strike REST API.
+
+debug(7 | 34); # 34 is required for try/catch
+
+# Include lib/cna-rest-core/cna_rest_core.cna before this file.
+
+############ GLOBAL VARIABLES ############
+global('$url_base $token $username $password $token_duration_ms');
+
+# Configure these variables for your environment
+$url_base = "";
+$username = "";
+$password = "";
+$token_duration_ms = 86400000; # Token duration in milliseconds (default: 1 day)
+##########################################
+
+$token = $null;
+
+
+# authenticate: Authenticates with the API and obtains a JWT token
+# Returns: JWT token string or $null on failure
+sub __authenticate {
+    local('$url $headers $body $response $status $details');
+    $url = $url_base . "/api/auth/login";
+    $headers = %(
+        Accept => "*/*",
+        Content-Type => "application/json"
+    );
+    $body = '{
+                "username": "' .$username. '",
+                "password": "' .$password. '",
+                "duration_ms": ' .$token_duration_ms. '
+            }';
+    $response = json_to_sleep(__makeAPIRequest($url, %(method => "POST", headers => $headers, body => $body, skipVerify => 1)));
+    $status = $response["status"];
+    $details = $response["content"];
+
+    if ($status is $null || $status eq "") {
+        $status = 0;
+        $response["status"] = 0;
+    }
+    if ($details is $null || $details eq "") {
+        $details = "No HTTP response content was returned. Verify the Cobalt Strike client was launched with the required Java module flags, then verify the REST API URL and authentication endpoint.";
+        $response["content"] = $details;
+    }
+
+    debug("[authenticate] Response: " . $status);
+    if ($status == 200) {
+        $token = $response["content"]['access_token'];
+        return $token;
+    } else {
+        println("[authenticate] Authentication failed with status: " . $status . " Details: " . $details);
+        return $null;
+    }
+}
+
+# get_valid_token: Ensures a valid JWT token is available
+# Returns: JWT token string
+sub __get_valid_token {
+    if ($token !is $null && $token ne "") {
+        return $token;
+    }
+
+    __authenticate();
+    return $token;
+}
+
+############ PUBLIC FUNCTIONS ############
+
+sub __api_auth_failed_response {
+    return %(status => 0, headers => %(), content => "Authentication failed; no bearer token was returned.", isFileDownload => 0);
+}
+
+# apiGET: Convenience function for GET requests
+# Arguments:
+#   $1: API endpoint (e.g., "/api/v1/beacons")
+# Returns: Map with response status and content
+sub apiGET {
+    local('$url $headers $auth_token');
+    $auth_token = __get_valid_token();
+    if ($auth_token is $null || $auth_token eq "") {
+        return __api_auth_failed_response();
+    }
+    $url = $url_base . $1;
+    $headers =  %(Content-Type => "application/json", Authorization => "Bearer " . $auth_token);
+    return json_to_sleep(__makeAPIRequest($url, %(method => "GET", headers => $headers, body => $null, skipVerify => 1)));
+}
+
+# apiPOST: Convenience function for POST requests
+# Arguments:
+#   $1: API endpoint
+#   $2: Request body (JSON string)
+# Returns: Map with response status and content
+sub apiPOST {
+    local('$url $headers $body $auth_token');
+    $auth_token = __get_valid_token();
+    if ($auth_token is $null || $auth_token eq "") {
+        return __api_auth_failed_response();
+    }
+    $url = $url_base . $1;
+    $headers =  %(Content-Type => "application/json", Authorization => "Bearer " . $auth_token);
+    $body = $2;
+
+    return json_to_sleep(__makeAPIRequest($url, %(method => "POST", headers => $headers, body => $body, skipVerify => 1)));
+}
+
+# apiPUT: Convenience function for PUT requests
+# Arguments:
+#   $1: API endpoint
+#   $2: Request body (JSON string)
+# Returns: Map with response status and content
+sub apiPUT {
+    local('$url $headers $body $auth_token');
+    $auth_token = __get_valid_token();
+    if ($auth_token is $null || $auth_token eq "") {
+        return __api_auth_failed_response();
+    }
+    $url = $url_base . $1;
+    $headers =  %(Content-Type => "application/json", Authorization => "Bearer " . $auth_token);
+    $body = $2;
+
+    return json_to_sleep(__makeAPIRequest($url, %(method => "PUT", headers => $headers, body => $body, skipVerify => 1)));
+}
+
+# apiDELETE: Convenience function for DELETE requests
+# Arguments:
+#   $1: API endpoint
+# Returns: Map with response status and content
+sub apiDELETE {
+    local('$url $headers $auth_token');
+    $auth_token = __get_valid_token();
+    if ($auth_token is $null || $auth_token eq "") {
+        return __api_auth_failed_response();
+    }
+    $url = $url_base . $1;
+    $headers =  %(Content-Type => "application/json", Authorization => "Bearer " . $auth_token);
+
+    return json_to_sleep(__makeAPIRequest($url, %(method => "DELETE", headers => $headers, body => $null, skipVerify => 1)));
+}
+
+# csCheckConnection: Validates that the configured Cobalt Strike REST API is reachable
+sub csCheckConnection {
+    local('$response_version $response_last_error');
+
+    $response_version = apiGET("/api/v1");
+
+    if (__response_is_success_status($response_version["status"])) {
+        println("[Cobalt Strike API] Cobalt Strike API is reachable. Status: " . $response_version["status"]);
+        return 1;
+    }
+
+    $response_last_error = __response_set_last_error($response_version);
+    if ($response_last_error eq "AUTH_FAILED") {
+        println("[Cobalt Strike API] Example requests skipped because token authentication failed. Check the Cobalt Strike credentials.");
+    }
+    else if ($response_last_error eq "APP_UNAVAILABLE") {
+        println("[Cobalt Strike API] Example requests skipped because the Cobalt Strike API is not available.");
+    }
+    else {
+        println("[Cobalt Strike API] Example requests skipped because initialization failed.");
+    }
+
+    return 0;
+}

@@ -1,0 +1,101 @@
+debug(7 | 34); # 34 is required for try/catch
+include(script_resource("../lib/cna-rest-core/cna_rest_core.cna"));
+include(script_resource("../lib/cs_rest_api_lib.cna"));
+include(script_resource("../lib/config_loader.cna"));
+
+global('$basic_config_loaded $response_get $response_post $statusUrl $status');
+
+sub __basic_rest_value_has_placeholder {
+    local('$value');
+    $value = [new String: ("" . $1)];
+    return iff(([$value indexOf: "<"] >= 0) || ([$value indexOf: ">"] >= 0), 1, 0);
+}
+
+sub __basic_rest_config_is_ready {
+    if ($url_base eq "" || $username eq "" || $password eq "") {
+        return 0;
+    }
+
+    if (__basic_rest_value_has_placeholder($url_base) || __basic_rest_value_has_placeholder($username) || __basic_rest_value_has_placeholder($password)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+sub __basic_rest_is_success_status {
+    local('$status');
+    $status = $1;
+    return iff($status >= 200 && $status < 300, 1, 0);
+}
+
+println("[basic_rest_usage] Loading local configuration.");
+$basic_config_loaded = load_local_config();
+
+if ($basic_config_loaded == 0) {
+    println("[basic_rest_usage] config/local.cna was not found. Copy config/local.example.cna to config/local.cna and set the REST API values.");
+}
+else if (__basic_rest_config_is_ready() == 0) {
+    println("[basic_rest_usage] REST API settings are incomplete. Set \$url_base, \$username, and \$password in config/local.cna.");
+}
+else {
+    println("[basic_rest_usage] Configuration loaded. Testing API with GET /api/v1/beacons.");
+
+    ################### SIMPLE GET REQUEST EXAMPLE ###################
+
+    # This example retrieves the list of beacons from the Cobalt Strike server using a GET request
+
+    $response_get = apiGET("/api/v1/beacons");
+    println("[basic_rest_usage] Beacons response status: " . $response_get["status"]);
+    println("Beacons List: " . $response_get);
+
+    if (__basic_rest_is_success_status($response_get["status"]) == 0) {
+        println("[basic_rest_usage] GET /api/v1/beacons failed. Skipping POST examples. Details: " . $response_get["content"]);
+    }
+    else {
+        ################### SIMPLE POST REQUEST EXAMPLE ###################
+
+        # This example sends a console command (ps) to a beacon using a POST request
+        $response_post = apiPOST("/api/v1/beacons/1086538906/consoleCommand",'{"command": "ps"}');
+
+        $statusUrl = $response_post["content"]["statusUrl"];
+
+        # This example retrieves the output of the command execution
+        $status = $response_post["content"]["taskStatus"];
+        while ($status eq "IN_PROGRESS") {
+            println("Task not completed yet. Waiting 5 more seconds...");
+            sleep(5 * 1000);
+            $response_get = apiGET($statusUrl);
+            $status = $response_get["content"]["taskStatus"];
+        }
+
+        println("PS command Response: " . $response_get);
+
+        ################### SERVER-SIDE ASSEMBLY EXECUTION EXAMPLE ###################
+
+        # This example executes a server-side assembly artifact on a beacon using a POST request
+        $response_post = apiPOST("/api/v1/beacons/1086538906/executeAssembly",
+                                 '{"assembly": "@artifacts/assemblies/ExampleAssembly.exe","arguments": "status /outfile:assembly-output.txt"}'
+                                 );
+
+        $statusUrl = $response_post["content"]["statusUrl"];
+
+        # This example retrieves the output of the assembly execution
+        $status = $response_post["content"]["taskStatus"];
+        while ($status eq "IN_PROGRESS") {
+            println("Task not completed yet. Waiting 5 more seconds...");
+            sleep(5 * 1000);
+            $response_get = apiGET($statusUrl);
+            $status = $response_get["content"]["taskStatus"];
+        }
+
+        println("Assembly Execution Output: " . $response_get);
+
+        # If the task completed successfully, download the output file
+        if ($status == "COMPLETED") {
+            println("Task did complete in expected time.");
+            $response_post = apiPOST("/api/v1/beacons/1086538906/download",'{"path": "assembly-output.txt"}');
+            println("Download Response: " . $response_post);
+        }
+    }
+}

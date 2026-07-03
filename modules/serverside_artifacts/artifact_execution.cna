@@ -1,5 +1,8 @@
 debug(7 | 34); # 34 is required for try/catch
-include(script_resource("../cs_rest_api_lib.cna"));
+include(script_resource("../../lib/cna-rest-core/cna_rest_core.cna"));
+include(script_resource("../../lib/cs_rest_api_lib.cna"));
+include(script_resource("../../lib/config_loader.cna"));
+load_local_config();
 
 sub get_artifacts_list_by_type {
     local('$artifact_type $filter_regex $response_get_artifacts', '$artifacts_list', '@artifact_names', '$artifact', '$artifact_file_name', '$dialog');
@@ -115,3 +118,5 @@ beacon_command_register(
 "Execute a server-side .NET program in-memory on target", 
 "Use: execute-serverside-assembly [file.exe] [arguments]\nUse: execute-serverside-assembly \"[PATCHES: [patch-rule] [patch-rule] [patch-rule] [patch-rule]]\" [file.exe] [arguments]\n\nExecutes a server-side .NET process assembly on target. This command loads the CLR in a temporary process and loads the assembly into it. If the assembly is in the data store, this command will use the loaded item automatically. For more information (help data-store).",
 "serverside_commands_group");
+
+csCheckConnection();

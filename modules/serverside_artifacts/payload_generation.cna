@@ -1,6 +1,9 @@
 
 debug(7 | 34); # 34 is required for try/catch
-include(script_resource("../cs_rest_api_lib.cna"));
+include(script_resource("../../lib/cna-rest-core/cna_rest_core.cna"));
+include(script_resource("../../lib/cs_rest_api_lib.cna"));
+include(script_resource("../../lib/config_loader.cna"));
+load_local_config();
 
 popup payloads_server {
     item("Stager Payload Generator", {open_serverside_stager_payload_generator_dialog();});
@@ -30,7 +33,6 @@ sub open_serverside_stageless_payload_generator_dialog {
     add(@available_udrls, "None", 0); # Add empty option
     @available_sleepmasks = sorta(values(get_artifacts_list_by_type("sleepmasks","^.*(?:\.cna|\.CNA)$")));
     add(@available_sleepmasks, "None", 0); # Add empty option
-
     $dialog = dialog("Payload generator (Stageless)", %(listener => "", guardrails => "IP= User= Server= Domain=", options => '"sleep_mask_name"="default-sleepmask" "loader_name"="obfuscation-loader"', output => "Raw", udrlCNA => "None", sleepmaskCNA => "None", exit_function => "Process", system_call_method => "None", http_library => "winhttp", dns_comm_mode => "dns", x64 => "true"), &callback);
     dialog_description($dialog, "This dialog exports a Cobalt Strike stageless Beacon. Several output options are available.")
     drow_text($dialog, "filename", "Filename:  ");
@@ -46,7 +48,7 @@ sub open_serverside_stageless_payload_generator_dialog {
     drow_combobox($dialog, "dns_comm_mode", "DNS Comm Mode: ", @("dns", "dns-over-http"));
     drow_checkbox($dialog, "x64", "x64: ", "Use x64 payload");
     dbutton_action($dialog, "Generate");
-    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#stageless-payload-generator");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/modules/serverside_artifacts/README.md#stageless-payload-generator");
     dialog_show($dialog);
 }
 
@@ -68,7 +70,7 @@ sub open_serverside_stager_payload_generator_dialog {
     drow_combobox($dialog, "output", "Output: ", @("C", "C#", "COM Scriptlet", "Java", "Perl", "PowerShell", "PowerShell Command", "Python", "Raw", "Ruby", "VBA", "Veil"));
     drow_checkbox($dialog, "x64", "x64: ", "Use x64 payload");
     dbutton_action($dialog, "Generate");
-    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#stager-payload-generator");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/modules/serverside_artifacts/README.md#stager-payload-generator");
     dialog_show($dialog);
 }
 
@@ -86,7 +88,7 @@ sub open_serverside_payload_download_dialog {
     dialog_description($dialog, "This dialog allows you to download a server-side generated payload on the client machine.")
     drow_combobox($dialog, "filename", "Filename: ", sorta(@generated_payloads));
     dbutton_action($dialog, "Download");
-    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/examples/Readme_serverside_payload_generation.md#download-payload");
+    dbutton_help($dialog, "https://github.com/Cobalt-Strike/sleep2rest/blob/main/modules/serverside_artifacts/README.md#download-payload");
     dialog_show($dialog);
 }
 
@@ -282,3 +284,5 @@ sub get_artifacts_list_by_type {
         exit();
     }
 }
+
+csCheckConnection();

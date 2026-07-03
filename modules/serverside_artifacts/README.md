@@ -1,12 +1,16 @@
 # Server-Side Payloads
 
+This module uses the generic REST helpers in `lib/cna-rest-core/cna_rest_core.cna` and the Cobalt Strike REST API helpers in `lib/cs_rest_api_lib.cna`.
+
 ## Setup
 
-1. Navigate to **Cobalt Strike** -> **Script Manager** and Load the ```serverside_payload_generation.cna``` script.
-2. A new menu option **Server-Side Payloads** will now be available on the top menu bar.
+1. Copy `config/local.example.cna` to `config/local.cna` and configure `$url_base`, `$username`, and `$password`.
+2. Navigate to **Cobalt Strike** -> **Script Manager** and load `modules/serverside_artifacts/payload_generation.cna`.
+3. The module calls `csCheckConnection()` during load and prints whether the Cobalt Strike REST API is reachable.
+4. A new menu option **Server-Side Payloads** will now be available on the top menu bar.
 
 <p align="center">
-<img src="https://github.com/user-attachments/assets/767f7646-80b3-4308-8ef0-307acd97652a" alt="Stager Payload Generator"/><br/><span style="font-family:monospace;font-size:0.8rem;">Server-Side Payloads Manu Item</span>
+<img src="https://github.com/user-attachments/assets/767f7646-80b3-4308-8ef0-307acd97652a" alt="Stager Payload Generator"/><br/><span style="font-family:monospace;font-size:0.8rem;">Server-Side Payloads Menu Item</span>
 </p>
 
 ## Usage
@@ -60,7 +64,7 @@ Navigate to **Server-Side Payloads** -> **Stageless Payload Generator**
 
 - **Filename**: Name of the payload.
 - **Listener**: Press the ... button to select a Cobalt Strike listener you would like to output a payload for.
-- **Guardrails**: By default, the Listener guardrails will be used. Use this textbox to overwrite the settings por the beacon (The format should be ```Key1=Value1``` and the possible keys are: ```IP```, ```User```, ```Server``` and ```Domain```). Wildcards are supported.
+- **Guardrails**: By default, the Listener guardrails will be used. Use this textbox to overwrite the settings for the beacon (The format should be ```Key1=Value1``` and the possible keys are: ```IP```, ```User```, ```Server``` and ```Domain```). Wildcards are supported.
 - **Output**: Use the drop-down to select one of the following output types (most options give you shellcode formatted as a byte array for that language):
     - **C**: Shellcode formatted as a byte array.
     - **C#**: Shellcode formatted as a byte array.
@@ -81,7 +85,7 @@ Navigate to **Server-Side Payloads** -> **Stageless Payload Generator**
     - **Direct**: Use the Nt* version of the function.
     - **Indirect**: Jump to the appropriate instruction within the Nt* version of the function.
 - **HTTP Library**: Select the Microsoft library (WinINet or WinHTTP) for the generated payload.
-- **DNS Comm Mode**: This option allows you to use DNS Over HTTPS (DOH) for egressing from the target using a DNS Beacon. The default value is determined by Malleable C2 “comm_mode“ option from listener definition. You can define more DOH configuration options in Malleable C2.
+- **DNS Comm Mode**: This option allows you to use DNS Over HTTPS (DOH) for egressing from the target using a DNS Beacon. The default value is determined by the Malleable C2 `comm_mode` option from the listener definition. You can define more DOH configuration options in Malleable C2.
 - **x64**: Check the box to generate an x64 payload for the selected listener.
 
 </details>
@@ -101,3 +105,22 @@ This dialog allows you to download a server-side generated payload on the client
 - **Filename**: Name of the payload to download.
 
 </details>
+
+## Server-Side Assembly Execution
+
+`artifact_execution.cna` registers the Beacon command:
+
+```text
+execute-serverside-assembly
+```
+
+The command executes a .NET assembly artifact from the server-side artifact store through the Cobalt Strike REST API.
+
+Usage:
+
+```text
+execute-serverside-assembly [assembly_name] [arguments]
+execute-serverside-assembly "PATCHES: library,function,offset,patch" [assembly_name] [arguments]
+```
+
+Assemblies must exist in the artifact store under `assemblies/`. The command validates the available assembly list and prints the accepted names when the requested assembly is missing.
