@@ -36,7 +36,7 @@ The `lib/cna-rest-core/cna_rest_core.cna` submodule is API-agnostic: it provides
 | Module | Load path | Functionality |
 |--------|-----------|---------------|
 | [Server-side artifacts](modules/serverside_artifacts/README.md) | `modules/serverside_artifacts/payload_generation.cna` | Top-level `Server-Side Payloads` menu for stager generation, stageless generation, and generated payload download through the Cobalt Strike REST API. |
-| Server-side assembly execution | `modules/serverside_artifacts/artifact_execution.cna` | `execute-serverside-assembly` Beacon command for executing .NET assemblies from the server-side artifact store, including optional patch rules. |
+| [Server-side assembly execution](modules/serverside_artifacts/README.md#server-side-assembly-execution) | `modules/serverside_artifacts/artifact_execution.cna` | `execute-serverside-assembly` Beacon command for executing .NET assemblies from the server-side artifact store, including optional patch rules. |
 
 ## Requirements
 
