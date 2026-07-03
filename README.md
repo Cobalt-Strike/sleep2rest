@@ -1,4 +1,4 @@
-# sleep2rest
+# Cobalt Strike REST API Aggressor Script Library
 
 Aggressor Script REST client library and module collection for working with arbitrary REST APIs from the Cobalt Strike client.
 
@@ -51,6 +51,40 @@ The `lib/cna-rest-core/cna_rest_core.cna` submodule is API-agnostic: it provides
 --add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED
 --add-opens=java.base/sun.net.www.http=ALL-UNNAMED
 ```
+
+An example of the ```launch-cobaltstrike-client.bat``` file to launch the Windows client would be:
+
+	```bash
+	@echo off
+	setlocal
+
+	set "JAVA_EXE=C:\Program Files\Microsoft\jdk-21.0.8.9-hotspot\bin\javaw.exe"
+	if not exist "%JAVA_EXE%" (
+		for %%J in (javaw.exe java.exe) do (
+			where %%~J >nul 2>&1 && set "JAVA_EXE=%%~J" && goto :found_java
+		)
+		echo ERROR: javaw/java not found. Install JRE/JDK or adjust JAVA_EXE in this script.
+		pause
+		exit /b 1
+	)
+	:found_java
+
+	set "JAR=C:\Program Files\cobaltstrike\client\cobaltstrike-client.jar"
+
+	rem --- build JVM_OPTS piece by piece (no carets) ---
+	set "JVM_OPTS=-XX:ParallelGCThreads=4"
+	set "JVM_OPTS=%JVM_OPTS% -XX:+AggressiveHeap"
+	set "JVM_OPTS=%JVM_OPTS% -XX:+UseParallelGC"
+	set "JVM_OPTS=%JVM_OPTS% --add-exports=java.base/sun.net.www.protocol.https=ALL-UNNAMED"
+	set "JVM_OPTS=%JVM_OPTS% --add-exports=java.base/sun.net.www.http=ALL-UNNAMED"
+	set "JVM_OPTS=%JVM_OPTS% --add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED"
+	set "JVM_OPTS=%JVM_OPTS% --add-opens=java.base/sun.net.www.http=ALL-UNNAMED"
+
+	start "" /min "%JAVA_EXE%" %JVM_OPTS% -jar "%JAR%"
+
+	endlocal
+	exit /b 0
+	```
 
 Optional module-specific requirement:
 
